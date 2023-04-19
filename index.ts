@@ -145,7 +145,7 @@ class Key implements Tile {
   isLock1() { return false; }
   isLock2() { return false; }
   draw(g: CanvasRenderingContext2D, x: number, y: number) {
-    g.fillStyle = this.keyConf.getColor();
+    this.keyConf.setColor(g);
     g.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
   moveHorizontal(dx: number) {
@@ -165,7 +165,7 @@ class Lock implements Tile {
   isLock1() { return this.keyConf.is1(); }
   isLock2() { return !this.keyConf.is1(); }
   draw(g: CanvasRenderingContext2D, x: number, y: number) {
-    g.fillStyle = this.keyConf.getColor();
+    this.keyConf.setColor(g);
     g.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
   moveHorizontal(dx: number) { }
@@ -287,9 +287,15 @@ class RemoveLock2 implements RemoveStrategy {
 //1. getter를 비공개로 설정
 //2. 오류 발생 줄에서 클래스로의 코드 이관 -> 인라인화
 //3. 새로운 메서드 작성 후 사용하지 못하도록 삭제
+
+// [getColor]
+//1. setColor는 setter가 아님, 호출 또는 전달, 한 가지만 할 것을 위반
+//2. 위와 마찬가지로 오류 발생 줄에서 클래스로의 코드 이관 -> 인라인화
 class KeyConfiguration {
   constructor(private color: string, private _1: boolean, private removeStrategy: RemoveStrategy) { }
-  getColor() { return this.color; }
+  setColor(g: CanvasRenderingContext2D) { 
+    g.fillStyle =  this.color; 
+  }
   is1() { return this._1; }
   removeLock() {
     remove(this.removeStrategy);
