@@ -244,7 +244,7 @@ class Player {
   private y = 1;
   draw(g:CanvasRenderingContext2D) {
     g.fillStyle = "#ff0000";
-    g.fillRect(playerx * TILE_SIZE, playery * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    g.fillRect(this.x * TILE_SIZE, this.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
   moveHorizontal(dx: number) {
     map[this.y][this.x + dx].moveHorizontal(this, dx);
@@ -357,12 +357,12 @@ class KeyConfiguration {
 const YELLOW_KEY = new KeyConfiguration("#ffcc00", true, new RemoveLock1());
 const BLUE_KEY = new KeyConfiguration("#00ccff", false, new RemoveLock2());
 
-function update() {
+function update(player: Player) {
   handleInputs();
   updateMap();
 }
 
-function handleInputs() {
+function handleInputs(player: Player) {
   while (inputs.length > 0) {
     let input = inputs.pop();
     input.handle();
@@ -384,7 +384,7 @@ function createGraphics() {
   return g;
 }
 
-function draw() {
+function draw(player: Player) {
   let g = createGraphics();
   drawMap(g);
   drawPlayer(g);
@@ -398,14 +398,10 @@ function drawMap(g: CanvasRenderingContext2D) {
   }
 }
 
-function drawPlayer(player: Player, g: CanvasRenderingContext2D) {
-  player.draw(g);
-}
-
 function gameLoop() {
   let before = Date.now();
-  update();
-  draw();
+  update(player);
+  draw(player);
   let after = Date.now();
   let frameTime = after - before;
   let sleep = SLEEP - frameTime;
