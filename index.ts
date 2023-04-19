@@ -134,11 +134,11 @@ class Key implements Tile {
     g.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
   moveHorizontal(dx: number) {
-    remove(this.keyConf.getRemoveStrategy());
+    this.keyConf.removeLock();
     moveToTile(playerx + dx, playery);
   }
   moveVertical(dy: number) {
-    remove(this.keyConf.getRemoveStrategy());
+    this.keyConf.removeLock();
     moveToTile(playerx, playery + dy);
   }
   update(x: number, y: number) { }
@@ -278,11 +278,17 @@ class RemoveLock2 implements RemoveStrategy {
   }
 }
 
+// [getRemoveStrategy, getColor, ]
+//1. getter를 비공개로 설정
+//2. 오류 발생 줄에서 클래스로의 코드 이관 -> 인라인화
+//3. 새로운 메서드 작성 후 사용하지 못하도록 삭제
 class KeyConfiguration {
   constructor(private color: string, private _1: boolean, private removeStrategy: RemoveStrategy) { }
   getColor() { return this.color; }
   is1() { return this._1; }
-  getRemoveStrategy() { return this.removeStrategy; }
+  removeLock() {
+    remove(this.removeStrategy);
+  }
 }
 const YELLOW_KEY = new KeyConfiguration("#ffcc00", true, new RemoveLock1());
 const BLUE_KEY = new KeyConfiguration("#00ccff", false, new RemoveLock2());
