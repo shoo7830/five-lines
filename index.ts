@@ -19,9 +19,9 @@ interface Tile {
   isLock1(): boolean;
   isLock2(): boolean;
   draw(g: CanvasRenderingContext2D, x: number, y: number): void;
-  moveHorizontal(player: Player, dx: number): void;
-  moveVertical(player: Player, dy: number): void;
-  update(x: number, y: number): void;
+  moveHorizontal(map: Map, player: Player, dx: number): void;
+  moveVertical(map: Map, player: Player, dy: number): void;
+  update(map: Map, x: number, y: number): void;
   getBlockOnTopState(): FallingState;
 }
 
@@ -193,7 +193,7 @@ class Lock implements Tile {
 class FallStrategy {
   constructor(private falling: FallingState) { }
   update(tile: Tile, x: number, y: number) {
-    this.falling = map[y + 1][x].getBlockOnTopState();
+    this.falling = map.getBlockOnTopState(x, y + 1);
     this.falling.drop(tile, x, y);
   }
 
@@ -242,33 +242,28 @@ class Down implements Input {
 class Player {
   private x = 1;
   private y = 1;
-  draw(g:CanvasRenderingContext2D) {
+  draw(g: CanvasRenderingContext2D) {
     g.fillStyle = "#ff0000";
     g.fillRect(this.x * TILE_SIZE, this.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
-  moveHorizontal(dx: number) {
-    map[this.y][this.x + dx].moveHorizontal(this, dx);
+  moveHorizontal(map: Map, dx: number) {
+    map.moveHorizontal(this, this.x, this.y, dx);
   }
-  moveVertical(dy: number) {
-    map[this.y + dy][this.x].moveVertical(this, dy);
+  moveVertical(map: Map, dy: number) {
+    map.moveVertical(this, this.x, this.y, dy);
   }
-  move(dx: number, dy: number) {
-    this.moveToTile(this.x + dx, this.y + dy);
+  move(map: Map, dx: number, dy: number) {
+    this.moveToTile(map, this.x + dx, this.y + dy);
   }
-  pushHorizontal(tile: Tile, dx: number) {
-    if (map[this.y][this.x + dx + dx].isAir()
-      && !map[this.y + 1][this.x + dx].isAir()) {
-      map[this.y][this.x + dx + dx] = tile;
-      this.moveToTile(this.x + dx, this.y);
-    }
+  pushHorizontal(map: Map, tile: Tile, dx: number) {
+    map.pushHorizontal(this, tile, this.x, this.y, dx);
   }
-  private moveToTile(newx: number, newy: number) {
-    map[this.y][this.x] = new Air();
-    map[newy][newx] = new PlayerTile();
+  private moveToTile(map: Map, newx: number, newy: number) {
+    map.movePlayer(this.x, this.y, newx, newy);
     this.x = newx;
     this.y = newy;
   }
-}
+}  
 
 let player = new Player();
 let rawMap: RawTile[][] = [
@@ -279,7 +274,86 @@ let rawMap: RawTile[][] = [
   [2, 4, 1, 1, 1, 9, 0, 2],
   [2, 2, 2, 2, 2, 2, 2, 2],
 ];
-let map: Tile[][];
+
+// [데이터 캡슐화]
+//1. Map 클래스 생성
+//2. map, transformMap, updateMap, drawMap => Map 클래스로 이동
+//3. getter, setter 생성
+//4. 위 작업이 오류가 한개의 메서드에 발생할 때 까지 반복
+//5. 변수 캡슐화 하였으므로 원래의 자리에 new Map
+//6. 클래스로 코드 이관, 인라인
+class Map {
+  private map: Tile[][];
+  getMap() {return this.map;}
+  setMap(map: Tile[][]) {this.map = map;}
+
+  transform () {
+    this.map = new Array(rawMap.length);
+    for (let y = 0; y < rawMap.length; y++) {
+      this.map[y] = new Array(rawMap[y].length);
+      for (let x = 0; x < rawMap[y].length; x++) {
+        this.map[y][x] = transformTile(rawMap[y][x]);
+      }
+    }
+  }
+
+  update() {
+    for (let y = this.map.length - 1; y >= 0; y--) {
+      for (let x = 0; x < this.map[y].length; x++) {
+        this.map[y][x].update(x, y);
+      }
+    }
+  }
+
+  draw (g: CanvasRenderingContext2D) {
+    for (let y = 0; y < this.map.length; y++) {
+      for (let x = 0; x < this.map[y].length; x++) {
+        this.map[y][x].draw(g, x, y);
+      }
+    }
+  }
+
+  isAir(x: number, y: number) {
+    return this.map[y][x].isAir();
+  }
+  drop(tile: Tile, x: number, y: number) {
+    this.map[y + 1][x] = tile;
+    this.map[y][x] = new Air();
+  }
+  getBlockOnTopState(x: number, y: number) {
+    return this.map[y][x].getBlockOnTopState();
+  }
+  movePlayer(x: number, y: number, newx: number, newy: number) {
+    this.map[y][x] = new Air();
+    this.map[newy][newx] = new PlayerTile();
+  }
+  moveHorizontal(player: Player, x: number, y: number, dx: number) {
+    this.map[y][x + dx].moveHorizontal(this, player, dx);
+  }
+  moveVertical(player: Player, x: number, y: number, dy: number) {
+    this.map[y + dy][x].moveVertical(this, player, dy);
+  }
+  remove(shouldRemove: RemoveStrategy) {
+    for (let y = 0; y < this.map.length; y++) {
+      for (let x = 0; x < this.map[y].length; x++) {
+        if (shouldRemove.check(this.map[y][x])) {
+          this.map[y][x] = new Air();
+        }
+      }
+    }
+  }
+  pushHorizontal(player: Player, tile: Tile, x: number, y: number, dx: number) {
+    if (this.map[y][x + dx + dx].isAir()
+      && !this.map[y + 1][x + dx].isAir()) {
+      this.map[y][x + dx + dx] = tile;
+      player.moveToTile(this, x + dx, y);
+    }
+  }
+
+
+}
+let map = new Map();
+
 function assertExhausted(x: never): never {
   throw new Error("Unexpected object: " + x);
 }
@@ -300,23 +374,15 @@ function transformTile(tile: RawTile) {
     default: assertExhausted(tile);
   }
 }
-function transformMap() {
-  map = new Array(rawMap.length);
-  for (let y = 0; y < rawMap.length; y++) {
-    map[y] = new Array(rawMap[y].length);
-    for (let x = 0; x < rawMap[y].length; x++) {
-      map[y][x] = transformTile(rawMap[y][x]);
-    }
-  }
-}
+
 
 let inputs: Input[] = [];
 
 function remove(shouldRemove: RemoveStrategy) {
-  for (let y = 0; y < map.length; y++) {
-    for (let x = 0; x < map[y].length; x++) {
-      if (shouldRemove.check(map[y][x])) {
-        map[y][x] = new Air();
+  for (let y = 0; y < map.getMap().length; y++) {
+    for (let x = 0; x < map.getMap()[y].length; x++) {
+      if (shouldRemove.check(map.getMap()[y][x])) {
+        map.getMap()[y][x] = new Air();
       }
     }
   }
@@ -369,13 +435,7 @@ function handleInputs(player: Player) {
   }
 }
 
-function updateMap() {
-  for (let y = map.length - 1; y >= 0; y--) {
-    for (let x = 0; x < map[y].length; x++) {
-      map[y][x].update(x, y);
-    }
-  }
-}
+
 
 function createGraphics() {
   let canvas = document.getElementById("GameCanvas") as HTMLCanvasElement;
@@ -390,13 +450,7 @@ function draw(player: Player) {
   drawPlayer(g);
 }
 
-function drawMap(g: CanvasRenderingContext2D) {
-  for (let y = 0; y < map.length; y++) {
-    for (let x = 0; x < map[y].length; x++) {
-      map[y][x].draw(g, x, y);
-    }
-  }
-}
+
 
 function gameLoop() {
   let before = Date.now();
