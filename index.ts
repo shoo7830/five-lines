@@ -357,13 +357,6 @@ class KeyConfiguration {
 const YELLOW_KEY = new KeyConfiguration("#ffcc00", true, new RemoveLock1());
 const BLUE_KEY = new KeyConfiguration("#00ccff", false, new RemoveLock2());
 
-function moveToTile(newx: number, newy: number) {
-  map[player.getY()][player.getX()] = new Air();
-  map[newy][newx] = new PlayerTile();
-  player.setX(newx);
-  player.setY(newy);
-}
-
 function update() {
   handleInputs();
   updateMap();
