@@ -78,29 +78,12 @@ class Player implements Tile {
   update(x: number, y: number) { }
 }
 
-interface FallingState {
-  isFalling(): boolean;
-  moveHorizontal(tile: Tile, dx: number): void;
-}
-class Falling {
-  isFalling() { return true; }
-  moveHorizontal(tile: Tile, dx: number) {
-  }
-}
-class Resting {
-  isFalling() { return false; }
-  moveHorizontal(tile: Tile, dx: number) {
-    if (map[playery][playerx + dx + dx].isAir()
-      && !map[playery + 1][playerx + dx].isAir()) {
-      map[playery][playerx + dx + dx] = tile;
-      moveToTile(playerx + dx, playery);
-    }
-  }
-}
 class Stone implements Tile {
   private fallStrategy: FallStrategy;
-  constructor(falling: FallingState) {
+  private pushStrategy: PushStrategy;
+  constructor(falling: boolean) {
     this.fallStrategy = new FallStrategy(falling);
+    this.pushStrategy = new PushStrategy();
   }
   isAir() { return false; }
   isLock1() { return false; }
@@ -110,7 +93,7 @@ class Stone implements Tile {
     g.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
   moveHorizontal(dx: number) {
-    this.fallStrategy.getFalling().moveHorizontal(this, dx);
+    this.pushStrategy.moveHorizontal(this, dx);
   }
   moveVertical(dy: number) { }
   update(x: number, y: number) {
@@ -120,8 +103,10 @@ class Stone implements Tile {
 
 class Box implements Tile {
   private fallStrategy: FallStrategy;
-  constructor(falling: FallingState) {
+  private pushStrategy: PushStrategy;
+  constructor(falling: boolean) {
     this.fallStrategy = new FallStrategy(falling);
+    this.pushStrategy = new PushStrategy();
   }
   isAir() { return false; }
   isLock1() { return false; }
@@ -131,7 +116,7 @@ class Box implements Tile {
     g.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
   moveHorizontal(dx: number) {
-    this.fallStrategy.getFalling().moveHorizontal(this, dx);
+    this.pushStrategy.moveHorizontal(this, dx);
   }
   moveVertical(dy: number) { }
   update(x: number, y: number) {
@@ -145,15 +130,15 @@ class Key implements Tile {
   isLock1() { return false; }
   isLock2() { return false; }
   draw(g: CanvasRenderingContext2D, x: number, y: number) {
-    g.fillStyle = this.keyConf.getColor();
+    this.keyConf.setColor(g);
     g.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
   moveHorizontal(dx: number) {
-    remove(this.keyConf.getRemoveStrategy());
+    this.keyConf.removeLock();
     moveToTile(playerx + dx, playery);
   }
   moveVertical(dy: number) {
-    remove(this.keyConf.getRemoveStrategy());
+    this.keyConf.removeLock();
     moveToTile(playerx, playery + dy);
   }
   update(x: number, y: number) { }
@@ -165,7 +150,7 @@ class Lock implements Tile {
   isLock1() { return this.keyConf.is1(); }
   isLock2() { return !this.keyConf.is1(); }
   draw(g: CanvasRenderingContext2D, x: number, y: number) {
-    g.fillStyle = this.keyConf.getColor();
+    this.keyConf.setColor(g);
     g.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
   moveHorizontal(dx: number) { }
@@ -173,17 +158,30 @@ class Lock implements Tile {
   update(x: number, y: number) { }
 }
 
+// [FallStrategy]
+//1. getter를 비공개로 설정
+//2. 클래스로의 코드 이관으로 오류 수정
 class FallStrategy {
-  constructor(private falling: FallingState) { }
-  getFalling() { return this.falling; }
+  constructor(private falling: boolean) { }
+  private getFalling() { return this.falling; }
   update(tile: Tile, x: number, y: number) {
-    this.falling = map[y + 1][x].isAir() ? new Falling() : new Resting();
+    this.falling = map[y + 1][x].isAir();
     this.drop(tile, x, y);
   }
   private drop(tile: Tile, x: number, y: number) {
-    if (this.falling.isFalling()) {
+    if (this.falling) {
       map[y + 1][x] = tile;
       map[y][x] = new Air();
+    }
+  }
+}
+
+class PushStrategy {
+  moveHorizontal(tile: Tile, dx: number) {
+    if (map[playery][playerx + dx + dx].isAir()
+      && !map[playery + 1][playerx + dx].isAir()) {
+      map[playery][playerx + dx + dx] = tile;
+      moveToTile(playerx + dx, playery);
     }
   }
 }
@@ -235,10 +233,10 @@ function transformTile(tile: RawTile) {
     case RawTile.AIR: return new Air();
     case RawTile.PLAYER: return new Player();
     case RawTile.UNBREAKABLE: return new Unbreakable();
-    case RawTile.STONE: return new Stone(new Resting());
-    case RawTile.FALLING_STONE: return new Stone(new Falling());
-    case RawTile.BOX: return new Box(new Resting());
-    case RawTile.FALLING_BOX: return new Box(new Falling());
+    case RawTile.STONE: return new Stone(false);
+    case RawTile.FALLING_STONE: return new Stone(true);
+    case RawTile.BOX: return new Box(false);
+    case RawTile.FALLING_BOX: return new Box(true);
     case RawTile.FLUX: return new Flux();
     case RawTile.KEY1: return new Key(YELLOW_KEY);
     case RawTile.LOCK1: return new Lock(YELLOW_KEY);
@@ -283,11 +281,23 @@ class RemoveLock2 implements RemoveStrategy {
   }
 }
 
+// [getRemoveStrategy]
+//1. getter를 비공개로 설정
+//2. 오류 발생 줄에서 클래스로의 코드 이관 -> 인라인화
+//3. 새로운 메서드 작성 후 사용하지 못하도록 삭제
+
+// [getColor]
+//1. setColor는 setter가 아님, 호출 또는 전달, 한 가지만 할 것을 위반
+//2. 위와 마찬가지로 오류 발생 줄에서 클래스로의 코드 이관 -> 인라인화
 class KeyConfiguration {
   constructor(private color: string, private _1: boolean, private removeStrategy: RemoveStrategy) { }
-  getColor() { return this.color; }
+  setColor(g:CanvasRenderingContext2D) { 
+    g.fillStyle =  this.color; 
+  }
   is1() { return this._1; }
-  getRemoveStrategy() { return this.removeStrategy; }
+  removeLock() {
+    remove(this.removeStrategy);
+  }
 }
 const YELLOW_KEY = new KeyConfiguration("#ffcc00", true, new RemoveLock1());
 const BLUE_KEY = new KeyConfiguration("#00ccff", false, new RemoveLock2());
@@ -352,7 +362,7 @@ function gameLoop() {
   let after = Date.now();
   let frameTime = after - before;
   let sleep = SLEEP - frameTime;
-  setTimeout(() => gameLoop(), sleep);
+  setTimeout(gameLoop, sleep);
 }
 
 window.onload = () => {
@@ -360,13 +370,13 @@ window.onload = () => {
   gameLoop();
 }
 
-const LEFT_KEY = "ArrowLeft";
-const UP_KEY = "ArrowUp";
-const RIGHT_KEY = "ArrowRight";
-const DOWN_KEY = "ArrowDown";
+const LEFT_KEY = 37;
+const UP_KEY = 38;
+const RIGHT_KEY = 39;
+const DOWN_KEY = 40;
 window.addEventListener("keydown", e => {
-  if (e.key === LEFT_KEY || e.key === "a") inputs.push(new Left());
-  else if (e.key === UP_KEY || e.key === "w") inputs.push(new Up());
-  else if (e.key === RIGHT_KEY || e.key === "d") inputs.push(new Right());
-  else if (e.key === DOWN_KEY || e.key === "s") inputs.push(new Down());
+  if (e.keyCode === 37 || e.key === "a") inputs.push(new Left());
+  else if (e.keyCode === 38 || e.key === "w") inputs.push(new Up());
+  else if (e.keyCode === 39 || e.key === "d") inputs.push(new Right());
+  else if (e.keyCode === 40 || e.key === "s") inputs.push(new Down());
 });
